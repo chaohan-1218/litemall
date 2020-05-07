@@ -42,6 +42,8 @@
         <template slot-scope="scope">{{ scope.row.goodsType | formatGoodsType }}</template>
       </el-table-column>
 
+      <el-table-column align="center" label="商品类目" prop="couponCatName"/>
+
       <el-table-column align="center" label="优惠券类型" prop="type">
         <template slot-scope="scope">{{ scope.row.type | formatType }}</template>
       </el-table-column>
@@ -99,6 +101,15 @@
               :key="type.value"
               :label="type.label"
               :value="type.value"/>
+          </el-select>
+        </el-form-item>
+        <el-form-item label="商品类目" prop="couponCategoryId">
+          <el-select v-model="dataForm.couponCategoryId">
+            <el-option
+              v-for="cat in catIdName"
+              :key="cat.id"
+              :label="cat.name"
+              :value="cat.id"/>
           </el-select>
         </el-form-item>
         <el-form-item label="优惠券数量" prop="total">
@@ -178,6 +189,7 @@
 
 <script>
 import { listCoupon, createCoupon, updateCoupon, deleteCoupon } from '@/api/coupon'
+import { listCategory } from '@/api/category'
 import Pagination from '@/components/Pagination' // Secondary package based on el-pagination
 
 const defaultTypeOptions = [
@@ -246,6 +258,7 @@ export default {
       typeOptions: Object.assign({}, defaultTypeOptions),
       statusOptions: Object.assign({}, defaultStatusOptions),
       list: [],
+      catIdName: [],
       total: 0,
       listLoading: true,
       listQuery: {
@@ -269,6 +282,8 @@ export default {
         type: 0,
         status: 0,
         goodsType: 0,
+        couponCategoryId: undefined,
+        couponCatName: undefined,
         goodsValue: [],
         timeType: 0,
         days: 0,
@@ -293,18 +308,49 @@ export default {
     this.getList()
   },
   methods: {
+    getCatIdFromName(catName) {
+      for (var i in this.catIdName) {
+        if (catName === this.catIdName[i].name) {
+          return this.catIdName[i].id
+        }
+      }
+    },
+    getCatNameFromId(catId) {
+      if (typeof (catId) === undefined) {
+        return '暂无'
+      } else {
+        for (var i in this.catIdName) {
+          if (catId === this.catIdName[i].id) {
+            return this.catIdName[i].name
+          }
+        }
+      }
+    },
     getList() {
       this.listLoading = true
-      listCoupon(this.listQuery)
+      // 查询category
+      listCategory()
         .then(response => {
-          this.list = response.data.data.list
-          this.total = response.data.data.total
-          this.listLoading = false
-        })
-        .catch(() => {
-          this.list = []
-          this.total = 0
-          this.listLoading = false
+          var categoryList = response.data.data.list
+          for (var i in categoryList) {
+            this.catIdName.push({ 'id': categoryList[i].id, 'name': categoryList[i].name })
+          }
+          // 查询coupon
+          listCoupon(this.listQuery)
+            .then(response => {
+              this.list = response.data.data.list
+              this.total = response.data.data.total
+              this.listLoading = false
+              // 更新coupon的属性
+              for (var i in this.list) {
+                this.list[i].couponCatName = this.getCatNameFromId(this.list[i].couponCategoryId)
+              }
+            })
+            .catch(() => {
+              this.list = []
+              this.total = 0
+              this.listLoading = false
+            })
         })
     },
     handleFilter() {
@@ -324,6 +370,8 @@ export default {
         type: 0,
         status: 0,
         goodsType: 0,
+        couponCategoryId: undefined,
+        couponCatName: undefined,
         goodsValue: [],
         timeType: 0,
         days: 0,
@@ -342,10 +390,13 @@ export default {
     createData() {
       this.$refs['dataForm'].validate(valid => {
         if (valid) {
+          this.dataForm.couponCatName = this.getCatNameFromId(this.dataForm.couponCategoryId)
           createCoupon(this.dataForm)
             .then(response => {
               this.list.unshift(response.data.data)
+              this.list[0].couponCatName = this.getCatNameFromId(this.list[0].couponCategoryId)
               this.dialogFormVisible = false
+              this.total++
               this.$notify.success({
                 title: '成功',
                 message: '创建优惠券成功'
@@ -377,6 +428,7 @@ export default {
     updateData() {
       this.$refs['dataForm'].validate(valid => {
         if (valid) {
+          this.dataForm.couponCatName = this.getCatNameFromId(this.dataForm.couponCategoryId)
           updateCoupon(this.dataForm)
             .then(() => {
               for (const v of this.list) {
@@ -402,12 +454,14 @@ export default {
       })
     },
     handleDelete(row) {
+      row.couponCategoryId = this.getCatIdFromName(row.couponCatName)
       deleteCoupon(row)
         .then(response => {
           this.$notify.success({
             title: '成功',
             message: '删除优惠券成功'
           })
+          this.total--
           const index = this.list.indexOf(row)
           this.list.splice(index, 1)
         })
